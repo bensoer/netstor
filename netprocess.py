@@ -36,13 +36,46 @@ class NetProcess:
         #make pipe non-blocking
         #fcntl.fcntl(__pipe, fcntl.F_SETFL, os.O_NONBLOCK)
 
+    def __has_entry(self, buffer):
+        skip_next_letter = False
+        for letter in buffer:
+            if skip_next_letter:
+                skip_next_letter = False
+                continue
+            if letter == "\\" or letter == "/":
+                skip_next_letter = True
+                continue
+            if letter == "}":
+                return True
+
+        return False
+
+    def __get_entry_index(self,buffer):
+        skip_next_letter = False
+        for index, letter in enumerate(buffer):
+            if skip_next_letter:
+                skip_next_letter = False
+                continue
+            if letter == "\\" or letter == "/":
+                skip_next_letter = True
+                continue
+            if letter == "}":
+                return index + 1
+
+        return False
 
     def start(self):
+
+        start_listening = False
 
         # the first time we run, pipe is blocking, we want to get a successful connect command before we change that
         print("Starting NetProcess. Awaiting Commands")
         while True:
             command = self.__recv_pipe.readline()
+            data = None
+
+            if start_listening:
+                data = self.__listener_socket.recv(1024)
 
             if command == "connect":
                 if self.__sender_socket is not None:
@@ -58,5 +91,36 @@ class NetProcess:
                     address, port = self.__configuration["address"]
                     print("something's wrong with %s:%d. Exception is %s" % (address, port, e))
                     __sender_socket.close()
+                    continue
 
-            # assuming everything is successful, this part is simply adding and copying over content around
+                #make the recv_pipe now non-blocking and start looping between the recv_pipe and the listener_socket
+                #for either data to pass around or a new command of things to do
+
+                fcntl.fcntl(self.__recv_pipe, fcntl.F_SETFL, os.O_NONBLOCK)
+
+            # for adding files to the storage
+            if "add" in command:
+                file_dir = command.split()[1]
+                print("Adding File: " + file_dir)
+
+                #need to find a break point in the network flow. keep listening until you find one and edit/append
+                #the 'data' string until you find a spot
+
+
+            # for removing files from the storage
+            if "remove" in command:
+                file_name = command.split()[1]
+                print("Removing File Named: " + file_name)
+
+                #will need to find this file in the network flow, keep reading and writing until it is found at whihc
+                #point them remove it
+
+
+            #after all of the above has happened we still sendout the data to the sender_socket and loop again for
+            #the next command
+            if data is not None:
+                bytes_of_data = len(data)
+                bytes_sent = self.__sender_socket.send(data)
+                #if for some reason not all gets sent before a return. keep trying
+                while bytes_sent < bytes_of_data:
+                    bytes_sent += self.__sender_socket.send(data)
